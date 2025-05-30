@@ -1,2 +1,9 @@
 streamlit
 numpy
+firebase_admin
+hashlib
+requests
+BytesIO
+Image
+uform
+PIL

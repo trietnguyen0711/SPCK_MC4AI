@@ -1,44 +1,104 @@
-import numpy as np
 import streamlit as st
+import hashlib
+from firebase_setup import hash_ref
+import function as fc
+def get_url_hash(url):
+    return hashlib.md5(url.encode()).hexdigest()
 
 st.title('Movie Recommender System')
-if 'uploaded_img' not in st.session_state:
-    st.session_state['uploaded_img'] = []
-option = st.selectbox(
-    "Movie DatabaseDatabase",
-    options = ['','Tải ảnh lên', 'Xem ảnh đã tải'],
-    index = 0
-)
-if option == 'Tải ảnh lên':
-    st.subheader('Tải ảnh lên')
-    uploaded_files = st.file_uploader(
-        "Chọn images",
-        type=["jpg", "jpeg", "png"],
-        key= 'img_uploader',
-        accept_multiple_files=True
-    )
-    if uploaded_files and st.button('Tải ảnh lên') :
-        for uploaded_file in uploaded_files:
-            if uploaded_file not in st.session_state['uploaded_img']:   
-                st.session_state['uploaded_img'].append(uploaded_file) 
-                st.image(uploaded_file, caption='Ảnh đã tải lên', use_container_width=True)
-            else:
-                st.warning(f'Ảnh {uploaded_file.name} đã tồn tại trong hệ thống')
-elif option == 'Xem ảnh đã tải':
-    st.subheader("Ảnh đã tải lên")
-    for idx, img in enumerate(st.session_state['uploaded_img'], 1):
-        col1, col2 = st.columns([4, 1])
-            
-        with col1:
-            st.image(img, caption=f'Ảnh {idx}: {img.name}', use_container_width=True)
-        with col2:
-            if st.button(f'Xóa ảnh {idx}', key=f'delete_{idx}'):
-                st.session_state['uploaded_img'].remove(img)
-                st.success(f'Đã xóa ảnh {img.name}!')
-                st.rerun()  
+option = st.selectbox("Movie Database", options=['', 'Thêm phim','Tìm kiếm phim'], index=0)
 
-    if st.button('Xóa tất cả ảnh', key='delete_all'):
-        st.session_state['uploaded_img'] = []
-        st.success('Đã xóa tất cả ảnh!')
-        st.rerun()  
-        
+if option == 'Thêm phim':
+    st.subheader('Thêm phim mới')
+
+    movie_name = st.text_input("Tên phim")
+    movie_description = st.text_area("Mô tả phim")
+    image_url = st.text_input("URL ảnh poster")
+
+    if st.button("Lưu phim"):
+        if not (movie_name and movie_description and image_url):
+            st.warning("⚠️ Vui lòng nhập đầy đủ tên, mô tả và URL ảnh.")
+        else:
+            movie_hash = get_url_hash(image_url)
+            uploaded_hashes = hash_ref.get() or {}
+
+            if movie_hash in uploaded_hashes:
+                st.warning("⚠️ Phim với ảnh này đã tồn tại!")
+            else:
+                try:
+                    hash_ref.child(movie_hash).set({
+                        "name": movie_name,
+                        "description": movie_description,
+                        "image_url": image_url
+                    })
+                    st.success(f"✅ Đã lưu phim {movie_name}")
+                    st.image(image_url, caption=movie_name, use_container_width=True)
+                except Exception as e:
+                    st.error(f"❌ Lỗi ghi Firebase: {e}")
+
+elif option == 'Tìm kiếm phim':
+    text = st.text_input('Nhập mô tả của phim')
+    search_option = st.radio(
+        "Tìm kiếm theo:",
+        ('Tên phim', 'Mô tả phim', 'Poster phim')
+    )
+    # Nút tìm kiếm → gọi hàm mới → lưu danh sách ID phim giống nhất vào session
+    if st.button('🔍 Tìm kiếm'):
+        matched_ids = fc.searchFilm(text,search_option)
+        st.session_state['matched_ids'] = matched_ids
+
+    try:
+        uploaded_hashes = hash_ref.get() or {}
+    except Exception as e:
+        st.error(f"Lỗi khi đọc dữ liệu: {e}")
+        uploaded_hashes = {}
+
+    st.subheader("Danh sách phim")
+
+    if not uploaded_hashes:
+        st.info("Chưa có phim nào được lưu.")
+    else:
+        matched_ids = st.session_state.get('matched_ids', None)
+
+        if matched_ids:
+            if len(matched_ids) > 0:
+                for search_id in matched_ids:
+                    if search_id not in uploaded_hashes:
+                        continue  # bỏ qua phim đã bị xoá
+
+                    data = uploaded_hashes[search_id]
+                    col1, col2 = st.columns([5, 1])
+                    with col1:
+                        st.markdown(f"### 🎬 {data.get('name', 'Không tên')}")
+                        st.image(data.get('image_url', ''), use_container_width=True)
+                        st.markdown(f"**Mô tả:** {data.get('description', 'Không có mô tả')}")
+                    with col2:
+                        if st.button(f'❌ Xóa phim', key=f'delete_{search_id}'):
+                            try:
+                                hash_ref.child(search_id).delete()
+                                st.success(f"Đã xóa phim {data.get('name', '')}!")
+                                st.session_state['matched_ids'].remove(search_id)
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Lỗi khi xóa: {e}")
+            else:
+                st.warning("Không tìm thấy phim nào phù hợp với mô tả.")
+        else:
+            # Hiển thị toàn bộ nếu chưa tìm hoặc vừa xoá hết matched
+            for idx, (file_hash, data) in enumerate(uploaded_hashes.items(), 1):
+                col1, col2 = st.columns([5, 1])
+                with col1:
+                    st.markdown(f"### 🎬 {data.get('name', 'Không tên')}")
+                    st.image(data.get('image_url', ''), use_container_width=True)
+                    st.markdown(f"**Mô tả:** {data.get('description', 'Không có mô tả')}")
+                with col2:
+                    if st.button(f'❌ Xóa', key=f'delete_{idx}'):
+                        hash_ref.child(file_hash).delete()
+                        st.success(f"Đã xóa phim {data.get('name', '')}!")
+                        st.rerun()
+
+            if st.button('🗑️ Xóa tất cả'):
+                hash_ref.delete()
+                st.success("Đã xóa toàn bộ phim!")
+                st.rerun()
+
