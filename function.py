@@ -60,5 +60,5 @@ def searchFilm(text, type):
         results.append((dataId[i], similarity))
     # Sắp xếp theo độ tương đồng cao → thấp
     results.sort(key=lambda x: x[1], reverse=True)
-
     return [item[0] for item in results]
+# print(searchFilm(text='Vu Tru', type='Tên phim'))

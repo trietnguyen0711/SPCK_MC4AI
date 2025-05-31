@@ -42,11 +42,6 @@ elif option == 'Tìm kiếm phim':
         "Tìm kiếm theo:",
         ('Tên phim', 'Mô tả phim', 'Poster phim')
     )
-    # Nút tìm kiếm → gọi hàm mới → lưu danh sách ID phim giống nhất vào session
-    if st.button('🔍 Tìm kiếm'):
-        matched_ids = fc.searchFilm(text,search_option)
-        st.session_state['matched_ids'] = matched_ids
-
     try:
         uploaded_hashes = hash_ref.get() or {}
     except Exception as e:
@@ -54,12 +49,15 @@ elif option == 'Tìm kiếm phim':
         uploaded_hashes = {}
 
     st.subheader("Danh sách phim")
-
+        
     if not uploaded_hashes:
         st.info("Chưa có phim nào được lưu.")
     else:
         matched_ids = st.session_state.get('matched_ids', None)
-
+        # Nút tìm kiếm → gọi hàm mới → lưu danh sách ID phim giống nhất vào session
+        if st.button('🔍 Tìm kiếm'):
+            matched_ids = fc.searchFilm(text,search_option)
+            st.session_state['matched_ids'] = matched_ids
         if matched_ids:
             if len(matched_ids) > 0:
                 for search_id in matched_ids:
